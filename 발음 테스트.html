@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>한국어 발음 테스트</title>
+<style>
+body { font-family: 'Pretendard', sans-serif; background-color: #f4f4f4; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
+h1 { margin-bottom: 20px; }
+#sentence { font-size:1.2em; background:#fff; padding:15px 25px; border-radius:10px; box-shadow:0 0 5px rgba(0,0,0,0.2); margin-bottom:20px; text-align:center; width:80%; }
+#timer { font-size:1.2em; color:#d9534f; margin-bottom:15px; }
+button { padding:12px 25px; font-size:1em; border:none; border-radius:10px; cursor:pointer; background:#007bff; color:white; }
+#result { margin-top:20px; font-size:1.1em; }
+</style>
+</head>
+<body>
+<h1>🎤 한국어 발음 테스트</h1>
+<div id="sentence">테스트 문장이 여기에 표시됩니다.</div>
+<div id="timer">남은 시간: 0초</div>
+<button id="startBtn">시작</button>
+<div id="result"></div>
+
+<script>
+const sentences = [
+  { text: "간장 공장 공장장은 강 공장장이고 된장 공장 공장장은 공 공장장이다.", time: 8 },
+  { text: "내가 그린 기린 그림은 목이 긴 기린 그린 그림이고, 네가 그린 기린 그림은 목이 안 긴 기린 그림이다.", time: 8 },
+  { text: "저기 계신 저 분이 박 법학박사이시고 여기 계신 이 분이 백 법학박사이시다.", time: 8 },
+  { text: "경찰청 창살은 외철창살이고 검찰청 창살은 쌍철창살이다.", time: 6 },
+  { text: "한양 양장점 옆 한영 양장점.", time: 6 }
+];
+
+const sentenceDiv = document.getElementById("sentence");
+const resultDiv = document.getElementById("result");
+const timerDiv = document.getElementById("timer");
+const startBtn = document.getElementById("startBtn");
+
+let recognition;
+let timer;
+let timeLeft = 0;
+let currentSentence = null;
+
+// 스페이스바로 시작, 쉬프트로 문장 변경
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space") { 
+    e.preventDefault();
+    if (!startBtn.disabled) startTest();
+  }
+  if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+    changeRandomSentence();
+  }
+});
+
+startBtn.addEventListener("click", startTest);
+
+function startTest() {
+  pickRandomSentence();
+  resultDiv.textContent = "";
+  startBtn.disabled = true;
+  timerDiv.textContent = "대기 중: 3초";
+
+  let prepTime = 3;
+  const prepInterval = setInterval(() => {
+    prepTime--;
+    timerDiv.textContent = `대기 중: ${prepTime}초`;
+    if (prepTime <= 0) {
+      clearInterval(prepInterval);
+      beginRecognition(currentSentence.text, currentSentence.time);
+    }
+  }, 1000);
+}
+
+function pickRandomSentence() {
+  const random = sentences[Math.floor(Math.random() * sentences.length)];
+  currentSentence = { ...random };
+  sentenceDiv.textContent = currentSentence.text;
+}
+
+function changeRandomSentence() {
+  if (recognition) recognition.stop(); // 진행 중 녹음 종료
+  pickRandomSentence();
+  resultDiv.textContent = "";
+  timerDiv.textContent = `남은 시간: ${currentSentence.time}초`;
+  startBtn.disabled = false;
+}
+
+function beginRecognition(sentence, limit) {
+  timeLeft = limit;
+  timerDiv.textContent = `남은 시간: ${timeLeft}초`;
+
+  recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  recognition.lang = "ko-KR";
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  let finalTranscript = "";
+
+  recognition.onresult = (event) => {
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      if (event.results[i].isFinal) finalTranscript += transcript;
+    }
+  };
+
+  recognition.start();
+
+  timer = setInterval(() => {
+    timeLeft--;
+    timerDiv.textContent = `남은 시간: ${timeLeft}초`;
+    if (timeLeft <= 0) {
+      clearInterval(timer);
+      recognition.stop();
+    }
+  }, 1000);
+
+  recognition.onend = () => {
+    startBtn.disabled = false;
+    timerDiv.textContent = "시간 종료!";
+    calculateScore(sentence, finalTranscript);
+  };
+}
+
+// 자모 기반 점수 계산
+function calculateScore(target, spoken) {
+  if (!spoken) {
+    resultDiv.textContent = "음성이 인식되지 않았습니다 😢";
+    return;
+  }
+  const distance = levenshtein(jamoSplit(target), jamoSplit(spoken));
+  const maxLen = Math.max(jamoSplit(target).length, jamoSplit(spoken).length);
+  const similarity = Math.max(0, (1 - distance / maxLen) * 100);
+  resultDiv.textContent = `🎯 발음 점수: ${similarity.toFixed(1)}점`;
+}
+
+// 자모 분리
+function jamoSplit(str) {
+  const chosung=["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+  const jungsung=["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
+  const jongsung=["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+  return Array.from(str).map(ch=>{
+    const code=ch.charCodeAt(0)-0xAC00;
+    if(code<0||code>11171) return ch;
+    const cho=Math.floor(code/588);
+    const jung=Math.floor((code%588)/28);
+    const jong=code%28;
+    return chosung[cho]+jungsung[jung]+jongsung[jong];
+  }).join('');
+}
+
+// 레벤슈타인 거리
+function levenshtein(a,b){
+  const dp=Array.from({length:a.length+1},()=>Array(b.length+1).fill(0));
+  for(let i=0;i<=a.length;i++) dp[i][0]=i;
+  for(let j=0;j<=b.length;j++) dp[0][j]=j;
+  for(let i=1;i<=a.length;i++){
+    for(let j=1;j<=b.length;j++){
+      dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1])+1;
+    }
+  }
+  return dp[a.length][b.length];
+}
+</script>
+</body>
+</html>
